@@ -3,19 +3,26 @@
 Client Laravel pour le relay SMS Winalco (`https://sms-relay.winalco.dz`) : envoi
 transactionnel, suivi en base, webhook de statut signé HMAC.
 
-Référence API complète : [`docs/winalco-sms-api-reference`](docs/winalco-sms-api-reference).
+Référence API complète : [`docs/winalco-sms-api-reference.md`](docs/winalco-sms-api-reference.md).
+
+> **Prérequis :** une clé API du relay. Le code de ce package est libre (MIT),
+> mais l'envoi de SMS nécessite un compte sur la plateforme Winalco —
+> inscrivez-vous puis créez votre clé dans console → API Keys.
 
 ## Installation
 
-```json
-"repositories": [
-    { "type": "vcs", "url": "../winalco-laravel-sms" }
-]
+```bash
+composer require winalco/laravel-sms
+php artisan migrate   # crée sms_messages (no-op si elle existe déjà)
 ```
 
-```bash
-composer require winalco/laravel-sms:^1.0
-php artisan migrate   # crée sms_messages (no-op si elle existe déjà)
+Si le package n'est pas encore disponible sur Packagist, ajoutez d'abord le
+dépôt Git dans votre `composer.json` :
+
+```json
+"repositories": [
+    { "type": "vcs", "url": "https://github.com/winalco/laravel-sms" }
+]
 ```
 
 `.env` :
@@ -78,3 +85,9 @@ Messages GSM-7 : rester ≤ 160 caractères et éviter `ê â î ô û ç`
 composer install
 vendor/bin/pest
 ```
+
+## Licence
+
+Code sous [licence MIT](LICENSE). Le service d'envoi lui-même (relay, SIM,
+quotas) est fourni par la plateforme Winalco et nécessite un compte et une
+clé API — voir `contact@winalco.dz`.

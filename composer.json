@@ -2,7 +2,7 @@
     "name": "winalco/laravel-sms",
     "description": "Client Laravel pour le relay SMS Winalco (envoi, suivi, webhook signé).",
     "type": "library",
-    "license": "proprietary",
+    "license": "MIT",
     "require": {
         "php": "^8.1",
         "guzzlehttp/guzzle": "^7.2",
