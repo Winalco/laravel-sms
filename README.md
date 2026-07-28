@@ -86,6 +86,11 @@ composer install
 vendor/bin/pest
 ```
 
+Note : le package cible Laravel 10 (fin de support sécurité atteinte) ; la
+config racine désactive donc le blocage composer des security advisories
+pour l'installation de dev/CI. Les applications consommatrices ne sont pas
+concernées par cette config.
+
 ## Licence
 
 Code sous [licence MIT](LICENSE). Le service d'envoi lui-même (relay, SIM,
