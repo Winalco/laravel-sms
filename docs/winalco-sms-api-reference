@@ -1,0 +1,121 @@
+# Winalco SMS Relay — API Reference (condensed)
+
+Base URL: `https://sms-relay.winalco.dz`
+Support: contact@winalco.dz
+
+## Authentication
+Every request needs header `X-Api-Key: wak_...` (created in console → API Keys; secret shown only once). The key is scoped to your account. Keep it server-side only — never in mobile apps or web pages. If leaked, revoke it in the console → subsequent calls get 401.
+
+## Send one SMS
+```
+POST /api/v1/sms/send
+X-Api-Key: wak_...
+Content-Type: application/json
+
+{"to": "0661702451", "message": "Your confirmation code is 4821"}
+```
+Response `201 Created`:
+```json
+{"id": "0f4c9b2e-...", "to": "0661702451", "status": "pending", "errorCode": null,
+ "createdUtc": "2026-07-26T15:30:00Z", "updatedUtc": "2026-07-26T15:30:00Z"}
+```
+- Accepted number formats: `0661702451`, `+213661702451`, `00213661702451`.
+- **Store the `id`** — it's the handle for status tracking and for linking webhook events to your business data.
+
+## Idempotency (avoid double sends)
+Add header `Idempotency-Key: <unique value per logical send>` (e.g. order/invoice ID, or a UUID). Safe to retry the same call any number of times:
+- `201` = first time seen, SMS queued.
+- `200` = key already seen; returns the ORIGINAL message (same body, same `id`), nothing re-sent.
+
+Never reuse a key for two genuinely different SMS — the second would never be sent (you'd just get the first message back).
+
+## Bulk send
+```
+POST /api/v1/sms/send-bulk
+{"to": ["0661702451", "0770000001", ...], "message": "..."}
+```
+- Max **500 numbers per call**. Each recipient counts as 1 SMS against your quota (50 numbers = 50 SMS).
+- Response: `{"accepted": N, "rejected": M, "results": [{"to", "id", "status", "message"}, ...]}`
+  - rejected entries have `id: null`, `status: "rejected"`, and a reason in `message`.
+- HTTP codes: `201` all accepted · `207` partial (some rejected — a batch can fail mid-way, e.g. quota reached) · `400` none accepted.
+- **Always iterate `results`** per recipient; don't rely on the HTTP code alone.
+
+## Usage / quotas
+```
+GET /api/v1/sms/usage
+```
+Returns `{plan, dailyQuota, dailyUsed, dailyRemaining, monthlyQuota, monthlyUsed, monthlyRemaining, relayCount}`.
+A `null` quota means unlimited (its `remaining` is `null` too). Check this before a campaign instead of discovering a 429 mid-send.
+
+## Message status
+```
+GET /api/v1/sms/{id}
+```
+| Status | Meaning |
+|---|---|
+| `pending` | Queued, waiting for an available phone |
+| `claimed` | A phone picked it up |
+| `sending` | Being handed to the mobile network |
+| `sent` | Phone delivered it to the mobile network. **Final** |
+| `failed` | Failed; cause in `errorCode`. **Final** |
+| `canceled` | Canceled from the console. **Final** |
+
+⚠️ `sent` = handed to the carrier network, **not** proof the recipient received it (no operator delivery receipts; a phone that's off/out of coverage can still be `sent`). Nearly all `sent` messages arrive, but `sent` is not legal/contractual proof of receipt. Prefer the webhook over polling this endpoint.
+
+## Webhook (push status notifications)
+Set your URL in console → API Keys → status webhook. Winalco POSTs to it on every **final** state (`sent`, `failed`, `canceled`).
+
+URL requirements: **HTTPS only** (payload contains recipient numbers) · publicly reachable (no localhost / private IPs / internal hostnames — rejected at registration) · **no auth** on the endpoint (the signature proves origin, not credentials) · must respond within **10 seconds**.
+
+On registration you get a signing secret `whs_...` — **shown only once**. Disabling the webhook deletes the secret; re-enabling issues a NEW one (your verification code must be updated). Don't register the URL before the receiving code exists.
+
+Delivered request:
+```
+POST <your-url>
+X-Winalco-Signature: t=1785000000,v1=8f3c...
+X-Winalco-Delivery: 3c5e...
+Content-Type: application/json
+
+{"event": "message.sent", "id": "...", "to": "...", "status": "sent",
+ "errorCode": null, "createdUtc": "...", "updatedUtc": "..."}
+```
+
+Rules for your endpoint:
+1. **Respond 200 immediately.** Any other response (or timeout) triggers retries after 1 min, 5 min, 30 min, 2 h, 6 h — then Winalco gives up (state remains available via `GET /api/v1/sms/{id}`).
+2. **Verify the signature** (your URL is public — anyone could POST fake events):
+   - Parse header `t=<unix-timestamp>,v1=<hex>`.
+   - Reject if `|now − t| > 300 s` (replay protection).
+   - Compute `HMAC-SHA256(key = whs_secret, message = t + "." + RAW_BODY)` — over the **raw request bytes**, never re-serialized JSON.
+   - Compare with a constant-time compare (`hash_equals` / `crypto.timingSafeEqual`), never `==`.
+3. **Deduplicate** using `X-Winalco-Delivery`: unique per logical event, identical across retries. Store it (e.g. as a DB primary key); if already seen, return 200 and skip processing. Otherwise a lost response → retry would run your business logic twice.
+4. **Slow work goes async**: persist the event, return 200, then process (queue/cron; in PHP-FPM `fastcgi_finish_request()`). Anything over 10 s counts as failure and causes duplicate deliveries.
+5. To link an event to your data, you must have stored the send `id` (e.g. on the order row) at send time.
+
+Node.js signature check:
+```js
+const crypto = require('crypto')
+function verify(secret, header, rawBody) {
+  const p = Object.fromEntries(header.split(',').map(s => s.split('=')))
+  if (Math.abs(Date.now() / 1000 - Number(p.t)) > 300) return false
+  const expected = crypto.createHmac('sha256', secret).update(`${p.t}.${rawBody}`).digest('hex')
+  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(p.v1))
+}
+```
+
+## Response codes
+| Code | Meaning | Action |
+|---|---|---|
+| 200 | Idempotency-Key replay | Nothing to do — SMS was already queued |
+| 201 | SMS accepted & queued | Store the `id` |
+| 207 | Bulk partially accepted | Read `results` per recipient |
+| 400 | `to`/`message` missing or invalid | Fix the request; retrying unchanged fails identically |
+| 401 | API key missing/invalid/revoked | Check `X-Api-Key` |
+| 404 | Message id unknown for this account | Check the `id` |
+| 429 | Quota exceeded | Wait for reset or upgrade plan |
+
+Error bodies carry a readable `message` field, e.g. `{"message": "Quota mensuel atteint."}`.
+
+## How delivery works (important for expectations)
+SMS are sent from real SIM cards in phones you enrolled:
+- **Delivery is not instant** — a message waits for an available phone (usually a few seconds).
+- Routing prefers a SIM on the recipient's network (prefixes 05/06/07 → same-network is much cheaper); if none is available the message may wait briefly. Configurable in console → Relays: set fallback to "immediate" for OTP/confirmation codes (speed over cost); leave the default wait for campaigns.
