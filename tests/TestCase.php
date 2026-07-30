@@ -2,8 +2,6 @@
 
 namespace Winalco\Sms\Tests;
 
-use Illuminate\Cache\RateLimiting\Limit;
-use Illuminate\Support\Facades\RateLimiter;
 use Orchestra\Testbench\TestCase as Orchestra;
 use Winalco\Sms\SmsServiceProvider;
 
@@ -14,13 +12,11 @@ abstract class TestCase extends Orchestra
         return [SmsServiceProvider::class];
     }
 
-    protected function setUp(): void
+    protected function defineEnvironment($app): void
     {
-        parent::setUp();
-
-        // Le squelette testbench ne définit pas le rate limiter "api"
-        // qu'exige le middleware throttle:api de la route webhook. Enregistré
-        // après le boot; le middleware ne le résout qu'au moment de la requête.
-        RateLimiter::for('api', fn () => Limit::none());
+        // Testbench pointe par défaut sur mysql/forge; sqlite en mémoire pour
+        // que la suite tourne sans service externe (CI comprise).
+        $app['config']->set('database.default', 'sqlite');
+        $app['config']->set('database.connections.sqlite.database', ':memory:');
     }
 }

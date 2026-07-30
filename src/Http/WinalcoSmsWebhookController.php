@@ -32,16 +32,33 @@ class WinalcoSmsWebhookController
             return response()->noContent(200);
         }
 
+        // Le relay ne pousse que des états finaux. Toute autre valeur est ignorée
+        // plutôt qu'écrite: une chaîne inattendue laisserait la ligne à jamais
+        // non-finale (donc réinscriptible), un type non-string ferait échouer la
+        // requête -> 500 -> retries du relay pendant 6 h. in_array strict couvre
+        // les deux cas.
+        $status = $payload['status'] ?? null;
+
+        if (! in_array($status, SmsMessage::FINAL_STATUSES, true)) {
+            Log::notice('Webhook SMS: statut inattendu ignoré', ['payload_id' => $providerId]);
+
+            return response()->noContent(200);
+        }
+
         $sms = SmsMessage::where('provider_id', $providerId)->first();
 
         if (! $sms) {
             // 200 quand même: un retry ne nous fera pas connaître cet id.
             Log::notice('Webhook SMS: id inconnu', ['payload_id' => $providerId]);
         } elseif (! $sms->isFinal()) {
+            $errorCode = $payload['errorCode'] ?? null;
+
             $sms->update([
-                'status' => $payload['status'] ?? $sms->status,
-                'error_code' => $payload['errorCode'] ?? null,
-                'webhook_delivery_id' => (string) $request->header('X-Winalco-Delivery'),
+                'status' => $status,
+                'error_code' => is_string($errorCode) ? mb_substr($errorCode, 0, 50) : null,
+                // La signature ne couvre que t + corps brut: cet en-tête n'est pas
+                // authentifié. Borné à la largeur de colonne.
+                'webhook_delivery_id' => mb_substr((string) $request->header('X-Winalco-Delivery'), 0, 64),
             ]);
         }
         // Déjà final = retry d'une livraison déjà traitée -> 200 sans retraiter.

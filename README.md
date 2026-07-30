@@ -59,9 +59,15 @@ Client bas niveau : `Winalco\Sms\WinalcoSms` — `send()`, `sendBulk()` (max 500
 ## Webhook de statut
 
 La route `POST /api/webhooks/winalco-sms` est enregistrée automatiquement
-(middleware `api`, nom `webhooks.winalco-sms`). Signature HMAC-SHA256 vérifiée
-(tolérance 300 s, comparaison constante) ; sans `WINALCO_SMS_WEBHOOK_SECRET`
-configuré, tout est rejeté (403).
+(middleware `throttle:600,1`, nom `webhooks.winalco-sms`). Signature HMAC-SHA256
+vérifiée (tolérance 300 s, comparaison constante) ; sans
+`WINALCO_SMS_WEBHOOK_SECRET` configuré, tout est rejeté (403). Seuls les statuts
+finaux (`sent`, `failed`, `canceled`) sont acceptés ; toute autre valeur est
+ignorée avec un 200 (pas de retry côté relay).
+
+La limite est explicite et non le groupe `api` : Laravel 11 a retiré
+`throttle:api` de ce groupe par défaut, le webhook serait donc sans limite sur
+Laravel 11+. 600/min laisse passer les rafales d'un `sendBulk` de 500.
 
 Ordre de mise en service (impératif) : déployer le code -> `php artisan migrate`
 -> enregistrer l'URL HTTPS publique dans console -> API Keys -> copier le secret
