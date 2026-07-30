@@ -15,8 +15,12 @@ jobs:
       fail-fast: false
       matrix:
         # testbench épingle laravel/framework; la version de PHP choisit Pest.
+        # Laravel 10 tourne sur PHP 8.2 et non 8.1: Pest n'est plus installable
+        # sur 8.1 (pest >= 2.36 exige ^8.2, les 2.x anterieures tirent paratest
+        # >= 7.4 qui exige aussi >= 8.2). Le support runtime de 8.1 est verifie
+        # par le job de lint ci-dessous.
         include:
-          - { laravel: 10, php: '8.1', testbench: '^8.0' }
+          - { laravel: 10, php: '8.2', testbench: '^8.0' }
           - { laravel: 11, php: '8.2', testbench: '^9.0' }
           - { laravel: 12, php: '8.3', testbench: '^10.0' }
           - { laravel: 13, php: '8.4', testbench: '^11.0' }
@@ -32,3 +36,19 @@ jobs:
       - run: composer update --prefer-dist --no-interaction --no-progress --with "orchestra/testbench:${{ matrix.testbench }}"
 
       - run: vendor/bin/pest
+
+  # composer.json annonce php ^8.1 et le code source n'utilise aucune syntaxe
+  # 8.2+, mais la suite ne peut plus s'y installer. A defaut de la faire tourner,
+  # on verifie au moins que rien de plus recent ne se glisse dans le code livre.
+  lint-81:
+    runs-on: ubuntu-latest
+    name: Lint PHP 8.1
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          coverage: none
+
+      - run: find src config database routes -name '*.php' -print0 | xargs -0 -n1 -P4 php -l

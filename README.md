@@ -114,6 +114,10 @@ Compatibilité : Laravel 10, 11, 12 et 13 (PHP 8.1+). La CI teste les quatre.
 `composer update --with orchestra/testbench:^9.0` (8/9/10/11 = Laravel
 10/11/12/13) force une version en local.
 
+PHP 8.1 reste supporté à l'exécution (le code n'utilise aucune syntaxe 8.2+,
+vérifié par un job de lint dédié) mais n'est plus couvert par la suite de
+tests : Pest n'est plus installable sur 8.1. Les tests tournent à partir de 8.2.
+
 Note : Laravel 10 et 11 ont atteint la fin de support sécurité amont ; ils
 restent installables, mais migrez vers 12 ou 13 dès que possible.
 
