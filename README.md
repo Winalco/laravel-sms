@@ -86,9 +86,13 @@ composer install
 vendor/bin/pest
 ```
 
-Note : le package cible Laravel 10 (fin de support sécurité atteinte) ; la
-config racine désactive donc le blocage composer des security advisories
-pour l'installation de dev/CI. Les applications consommatrices ne sont pas
+Compatibilité : Laravel 10, 11, 12 et 13 (PHP 8.1+). La CI teste les quatre.
+`composer update --with orchestra/testbench:^9.0` (8/9/10/11 = Laravel
+10/11/12/13) force une version en local.
+
+Note : Laravel 10 et 11 ont atteint la fin de support sécurité — la config
+racine désactive donc le blocage composer des security advisories pour
+l'installation de dev/CI. Les applications consommatrices ne sont pas
 concernées par cette config.
 
 ## Licence
