@@ -85,6 +85,24 @@ défaut). Sur hébergement mutualisé, un cron par minute suffit :
 Messages GSM-7 : rester ≤ 160 caractères et éviter `ê â î ô û ç`
 (bascule silencieuse en UCS-2 à 70 caractères par segment).
 
+## Rétention des données
+
+Chaque ligne `sms_messages` conserve le numéro du destinataire et le corps du
+message — souvent un OTP ou une référence de paiement. Rien n'est supprimé par
+défaut. Pour purger, fixez une durée et planifiez `model:prune` :
+
+```
+WINALCO_SMS_PRUNE_AFTER_DAYS=90
+```
+
+```php
+// routes/console.php (ou app/Console/Kernel.php)
+Schedule::command('model:prune', ['--model' => [\Winalco\Sms\Models\SmsMessage::class]])->daily();
+```
+
+Les numéros n'apparaissent jamais en clair dans les logs du package (seuls les
+3 derniers chiffres sont conservés).
+
 ## Tests
 
 ```bash
@@ -96,10 +114,8 @@ Compatibilité : Laravel 10, 11, 12 et 13 (PHP 8.1+). La CI teste les quatre.
 `composer update --with orchestra/testbench:^9.0` (8/9/10/11 = Laravel
 10/11/12/13) force une version en local.
 
-Note : Laravel 10 et 11 ont atteint la fin de support sécurité — la config
-racine désactive donc le blocage composer des security advisories pour
-l'installation de dev/CI. Les applications consommatrices ne sont pas
-concernées par cette config.
+Note : Laravel 10 et 11 ont atteint la fin de support sécurité amont ; ils
+restent installables, mais migrez vers 12 ou 13 dès que possible.
 
 ## Licence
 

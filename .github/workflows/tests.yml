@@ -4,6 +4,10 @@ on:
   push:
   pull_request:
 
+# Les PR de forks n'ont besoin que de lire le dépôt.
+permissions:
+  contents: read
+
 jobs:
   pest:
     runs-on: ubuntu-latest

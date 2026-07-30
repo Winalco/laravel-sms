@@ -1,1 +1,8 @@
 * text=auto eol=lf
+
+# Hors du tarball composer: inutile aux applications consommatrices.
+# docs/ reste embarqué, le README y renvoie.
+/tests           export-ignore
+/.github         export-ignore
+/phpunit.xml     export-ignore
+/.gitattributes  export-ignore

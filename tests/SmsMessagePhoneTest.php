@@ -12,6 +12,16 @@ it('normalizes valid algerian mobile numbers', function (string $input, string $
     ['00213770000001', '00213770000001'],
 ]);
 
+it('masks all but the last three digits for logs', function (?string $input, string $expected) {
+    expect(SmsMessage::maskPhone($input))->toBe($expected);
+})->with([
+    ['0661702451', '*******451'],
+    ['+213661702451', '**********451'],
+    ['ab', 'ab'],   // plus court que le suffixe: rien à masquer
+    ['', ''],
+    [null, ''],
+]);
+
 it('rejects invalid numbers', function (?string $input) {
     expect(SmsMessage::normalizePhone($input))->toBeNull();
 })->with([
