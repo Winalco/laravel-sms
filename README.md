@@ -117,6 +117,13 @@ Compatibilité : Laravel 10, 11, 12 et 13 (PHP 8.1+). La CI teste les quatre.
 Note : Laravel 10 et 11 ont atteint la fin de support sécurité amont ; ils
 restent installables, mais migrez vers 12 ou 13 dès que possible.
 
+Toutes leurs versions étant couvertes par des advisories, composer refuserait
+d'en résoudre une seule et les jobs CI 10/11 ne pourraient pas s'installer. La
+config racine lève donc le blocage **pour `laravel/framework` uniquement**
+(`config.policy.advisories.ignore`) : une advisory sur n'importe quelle autre
+dépendance bloque toujours. Cette config ne concerne que ce dépôt en tant que
+paquet racine, jamais les applications consommatrices.
+
 ## Licence
 
 Code sous [licence MIT](LICENSE). Le service d'envoi lui-même (relay, SIM,
