@@ -1,121 +1,121 @@
 # winalco/laravel-sms
 
-Envoyez des SMS depuis votre application Laravel via le relay Winalco : envoi
-transactionnel, suivi en base, webhook de statut signé.
+Send SMS from your Laravel application through the Winalco relay: transactional
+sending, database tracking, signed status webhook.
 
-## 1. Créer votre compte et votre clé API
+## 1. Create your account and API key
 
-Le code de ce package est libre (MIT), mais l'envoi passe par la plateforme
-Winalco : il vous faut un compte et une clé API.
+The code in this package is free (MIT), but sending goes through the Winalco
+platform: you need an account and an API key.
 
-> ### 👉 [Créer un compte / ouvrir la console](https://sms-relay.winalco.dz/app/)
-> Plan gratuit, une adresse e-mail suffit, sans carte bancaire.
-> Présentation du service et tarifs : <https://sms-relay.winalco.dz>
+> ### 👉 [Create an account / open the console](https://sms-relay.winalco.dz/app/)
+> Free plan, an email address is all it takes, no credit card.
+> Service overview and pricing: <https://sms-relay.winalco.dz>
 
-Une fois connecté, allez dans **console → API Keys** et créez une clé : vous
-obtenez un jeton `wak_...` **affiché une seule fois**, copiez-le tout de suite.
+Once logged in, go to **console → API Keys** and create a key. You get a
+`wak_...` token that is **shown only once** — copy it right away.
 
-Le champ **status webhook** de cette même page sert à l'étape 4 — laissez-le vide
-pour l'instant, tant que votre application n'est pas déployée.
+The **status webhook** field on that same page is used in step 4 — leave it empty
+for now, until your application is deployed.
 
-## 2. Installer le package
+## 2. Install the package
 
 ```bash
 composer require winalco/laravel-sms
-php artisan migrate   # crée la table sms_messages (no-op si elle existe déjà)
+php artisan migrate   # creates the sms_messages table (no-op if it already exists)
 ```
 
-Dans votre `.env` :
+In your `.env`:
 
 ```
-WINALCO_SMS_KEY=wak_...              # la clé de l'étape 1
+WINALCO_SMS_KEY=wak_...              # the key from step 1
 WINALCO_SMS_URL=https://sms-relay.winalco.dz
-WINALCO_SMS_WEBHOOK_SECRET=          # rempli à l'étape 4
+WINALCO_SMS_WEBHOOK_SECRET=          # filled in at step 4
 ```
 
-Pour ajuster la configuration : `php artisan vendor:publish --tag=winalco-sms-config`.
+To tweak the configuration: `php artisan vendor:publish --tag=winalco-sms-config`.
 
-## 3. Envoyer un SMS
+## 3. Send an SMS
 
 ```php
 use Winalco\Sms\Models\SmsMessage;
 
-// Point d'entrée unique : valide le numéro algérien (05/06/07, +213, 00213),
-// trace la ligne, envoie via la queue. Retourne null (loggé) si le numéro est
-// invalide ou en cas d'échec interne — ne casse jamais l'appelant.
+// Single entry point: validates the Algerian number (05/06/07, +213, 00213),
+// records the row, sends through the queue. Returns null (logged) if the number
+// is invalid or on internal failure — never breaks the caller.
 SmsMessage::queue(
     to: $user->phone,
-    message: __('Winalco : paiement confirmé. Réf :ref.', ['ref' => $ref]),
-    notable: $order,                          // morph optionnel
-    context: 'payment_confirmation',          // libre, affiché dans vos UIs
-    idempotencyKey: 'order-paid-'.$order->id, // anti double-envoi côté relay
+    message: __('Winalco: payment confirmed. Ref :ref.', ['ref' => $ref]),
+    notable: $order,                          // optional morph
+    context: 'payment_confirmation',          // free-form, shown in your UIs
+    idempotencyKey: 'order-paid-'.$order->id, // prevents double sends on the relay
 );
 ```
 
-Les envois passent par le job `Winalco\Sms\Jobs\SendSms` : un worker de queue
-doit tourner. Sur hébergement mutualisé, un cron par minute suffit :
+Sends go through the `Winalco\Sms\Jobs\SendSms` job, so a queue worker must be
+running. On shared hosting, a one-minute cron is enough:
 
 ```
-* * * * * cd /chemin/app && php artisan queue:work --stop-when-empty --max-time=50
+* * * * * cd /path/to/app && php artisan queue:work --stop-when-empty --max-time=50
 ```
 
-Besoin de plus bas niveau ? `Winalco\Sms\WinalcoSms` expose `send()`,
-`sendBulk()` (max 500 numéros), `usage()` (quotas) et `status($id)`.
+Need something lower level? `Winalco\Sms\WinalcoSms` exposes `send()`,
+`sendBulk()` (max 500 numbers), `usage()` (quotas) and `status($id)`.
 
-**Longueur des messages :** restez ≤ 160 caractères et évitez `ê â î ô û ç`
-(bascule silencieuse en UCS-2, soit 70 caractères par segment).
+**Message length:** stay ≤ 160 characters and avoid `ê â î ô û ç` (silently
+switches to UCS-2, i.e. 70 characters per segment).
 
-## 4. Recevoir les statuts (webhook)
+## 4. Receive delivery statuses (webhook)
 
-Le package expose déjà la route `POST /api/webhooks/winalco-sms` : signature
-HMAC-SHA256 vérifiée, doublons ignorés, statuts finaux (`sent`, `failed`,
-`canceled`) écrits sur la ligne `sms_messages`. Vous n'avez rien à coder.
+The package already exposes the `POST /api/webhooks/winalco-sms` route:
+HMAC-SHA256 signature verified, duplicates ignored, final statuses (`sent`,
+`failed`, `canceled`) written to the `sms_messages` row. Nothing to code.
 
-Faites-le dans cet ordre, sinon le relay enverra des statuts dans le vide :
+Do it in this order, otherwise the relay will push statuses into the void:
 
-1. Déployez le code et lancez `php artisan migrate` en production.
-2. Dans [console → API Keys](https://sms-relay.winalco.dz/app/), renseignez le
-   **status webhook** avec `https://votre-domaine.tld/api/webhooks/winalco-sms`
-   (HTTPS et publiquement joignable — pas de `localhost`).
-3. Copiez le secret `whs_...` **affiché une seule fois** dans
+1. Deploy the code and run `php artisan migrate` in production.
+2. In [console → API Keys](https://sms-relay.winalco.dz/app/), set the **status
+   webhook** to `https://your-domain.tld/api/webhooks/winalco-sms` (HTTPS and
+   publicly reachable — no `localhost`).
+3. Copy the `whs_...` secret, **shown only once**, into
    `WINALCO_SMS_WEBHOOK_SECRET`.
-4. Videz le cache : `php artisan config:clear`.
+4. Clear the cache: `php artisan config:clear`.
 
-Tant que `WINALCO_SMS_WEBHOOK_SECRET` est vide, toute requête entrante est
-rejetée en 403 — c'est voulu. Si vous désactivez puis réactivez le webhook dans
-la console, un **nouveau** secret est émis : pensez à mettre `.env` à jour.
+As long as `WINALCO_SMS_WEBHOOK_SECRET` is empty, every incoming request is
+rejected with a 403 — that is intentional. If you disable then re-enable the
+webhook in the console, a **new** secret is issued: update your `.env`.
 
-À noter : le statut `sent` signifie « remis au réseau mobile », pas « reçu par le
-destinataire ».
+Note: the `sent` status means "handed to the mobile network", not "received by
+the recipient".
 
-## 5. Rétention des données
+## 5. Data retention
 
-Chaque ligne `sms_messages` conserve le numéro du destinataire et le corps du
-message — souvent un OTP ou une référence de paiement. Rien n'est supprimé par
-défaut. Pour purger, fixez une durée et planifiez `model:prune` :
+Every `sms_messages` row keeps the recipient's number and the message body —
+often an OTP or a payment reference. Nothing is deleted by default. To purge,
+set a duration and schedule `model:prune`:
 
 ```
 WINALCO_SMS_PRUNE_AFTER_DAYS=90
 ```
 
 ```php
-// routes/console.php (ou app/Console/Kernel.php)
+// routes/console.php (or app/Console/Kernel.php)
 Schedule::command('model:prune', ['--model' => [\Winalco\Sms\Models\SmsMessage::class]])->daily();
 ```
 
-Les numéros n'apparaissent jamais en clair dans les logs du package (seuls les
-3 derniers chiffres sont conservés).
+Phone numbers never appear in clear text in the package logs (only the last
+3 digits are kept).
 
-## Compatibilité
+## Compatibility
 
-Laravel 10, 11, 12 et 13 · PHP 8.1+.
+Laravel 10, 11, 12 and 13 · PHP 8.1+.
 
-## Aide
+## Help
 
-- Détail de l'API HTTP : [`docs/winalco-sms-api-reference.md`](docs/winalco-sms-api-reference.md)
-  ou <https://sms-relay.winalco.dz/api.html>
-- Compte, quotas, facturation : <https://sms-relay.winalco.dz/app/>
-- Support : contact@winalco.dz
+- HTTP API details: [`docs/winalco-sms-api-reference.md`](docs/winalco-sms-api-reference.md)
+  or <https://sms-relay.winalco.dz/api.html>
+- Account, quotas, billing: <https://sms-relay.winalco.dz/app/>
+- Support: contact@winalco.dz
 
-Code sous [licence MIT](LICENSE). Le service d'envoi (relay, SIM, quotas) est
-fourni par la plateforme Winalco et nécessite un compte.
+Code under the [MIT license](LICENSE). The sending service itself (relay, SIM
+cards, quotas) is provided by the Winalco platform and requires an account.
